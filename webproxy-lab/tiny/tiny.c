@@ -31,17 +31,13 @@ int main(int argc, char** argv) {
     listenfd = Open_listenfd(argv[1]);
     while (1) {
         clientlen = sizeof(clientaddr);
-        connfd = Accept(listenfd, (SA*)&clientaddr,
-                        &clientlen);  // line:netp:tiny:accept
+        connfd = Accept(listenfd, (SA*)&clientaddr, &clientlen);
         Getnameinfo((SA*)&clientaddr, clientlen, hostname, MAXLINE, port, MAXLINE, 0);
         printf("Accepted connection from (%s, %s)\n", hostname, port);
         doit(connfd);
         Close(connfd);  // line:netp:tiny:close
     }
 }
-
-// 7.	doit()
-// •	위 전체를 묶어서 한 요청 처리
 
 /// @brief 하나의 HTTP 요청을 처리한다.
 /// @param fd 클라이언트와 연결된 소켓의 파일 디스크립터.
@@ -53,10 +49,11 @@ void doit(int fd) {
 
     Rio_readinitb(&rio, fd);
     Rio_readlineb(&rio, buf, MAXLINE);
+    printf("%s", buf);
 
     sscanf(buf, "%s %s %s", method, uri, version);
 
-    if (strcmp(method, "GET")) {
+    if (strcmp(method, "GET") && strcmp(method, "HEAD")) {
         clienterror(fd, "GET만됨", "501", "GET으로 오시오", "GET말고 구현 안되있음 ㅋㅋ");
         return;
     }
@@ -95,7 +92,7 @@ int parse_uri(char* uri, char* filename, char* cgiargs) {
         char* ptr = strchr(uri, '?');
         if (ptr == NULL) {
             strcpy(cgiargs, "");
-            return;
+            return 1;
         }
         strcpy(cgiargs, ptr + 1);
         *ptr = '\0';
@@ -119,6 +116,8 @@ void get_filetype(char* filename, char* filetype) {
         strcpy(filetype, "image/gif");
     else if (strstr(extension, "png"))
         strcpy(filetype, "image/png");
+    else if (strstr(extension, "mp4"))
+        strcpy(filetype, "application/mp4");
     else
         strcpy(filetype, "text/plain");
 }
@@ -131,19 +130,24 @@ void serve_static(int fd, char* filename, int filesize) {
     char fileType[MAXLINE], header[MAXLINE], *body;
     get_filetype(filename, fileType);
 
-    sprintf(header, "HTTP/1.0 200 OK\r\n");
-    sprintf(header, "%sContent-Length: %d\r\n", header, filesize);
-    sprintf(header, "%sContent-Type: %s\r\n", header, fileType);
-    sprintf(header, "%sConnection: close\r\n\r\n", header);
-
-    int filefd = Open(filename, O_RDONLY, 0);
-    body = Mmap(0, filesize, PROT_READ, MAP_PRIVATE, filefd, 0);
-    Close(filefd);
+    sprintf(header,
+            "HTTP/1.0 200 OK\r\n"
+            "Content-Length: %d\r\n"
+            "Content-Type: %s\r\n"
+            "Connection: close\r\n"
+            "\r\n",
+            filesize, fileType);
 
     Rio_writen(fd, header, strlen(header));
+    
+    int filefd = Open(filename, O_RDONLY, 0);
+    body = malloc(filesize);
+    Rio_readn(filefd, body, filesize);
+    Close(filefd);
+
     Rio_writen(fd, body, filesize);
 
-    Munmap(body, filesize);
+    free(body);
 }
 
 /// @brief CGI 프로그램을 실행하여 동적 콘텐츠를 클라이언트에게 전송한다.
@@ -151,15 +155,16 @@ void serve_static(int fd, char* filename, int filesize) {
 /// @param filename 실행할 CGI 프로그램 파일 이름.
 /// @param cgiargs CGI 프로그램 인자 문자열.
 void serve_dynamic(int fd, char* filename, char* cgiargs) {
-    char header[MAXLINE], *emptylist[] = {NULL};
-    sprintf(header, "HTTP/1.0 200 OK\r\n");
-    sprintf(header, "%sServer: tiny\r\n", header);
+    char header[MAXLINE];
+    sprintf(header,
+            "HTTP/1.0 200 OK\r\n"
+            "Server: tiny\r\n");
     Rio_writen(fd, header, strlen(header));
 
     if (Fork() == 0) {
         setenv("QUERY_STRING", cgiargs, 1);
         Dup2(fd, STDOUT_FILENO);
-        Execve(filename, emptylist, environ);
+        Execve(filename, NULL, environ);
     }
     Wait(NULL);
 }
@@ -172,10 +177,12 @@ void serve_dynamic(int fd, char* filename, char* cgiargs) {
 /// @param longmsg 상세 설명 메시지.
 void clienterror(int fd, char* cause, char* errnum, char* shortmsg, char* longmsg) {
     char buf[MAXLINE];
-    sprintf(buf, "%s\n", cause);
-    sprintf(buf, "%s\n", errnum);
-    sprintf(buf, "%s\n", shortmsg);
-    sprintf(buf, "%s\n", longmsg);
+    sprintf(buf,
+            "%s\n"
+            "%s\n"
+            "%s\n"
+            "%s\n",
+            cause, errnum, shortmsg, longmsg);
 
     Rio_writen(fd, buf, strlen(buf));
 }
