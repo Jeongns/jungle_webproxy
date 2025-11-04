@@ -58,7 +58,7 @@ void proxy(int connfd) {
     Rio_writen(serverfd, request_headers, strlen(request_headers));
 
     char buf[MAXLINE] = {0};
-    char* cache_buf;
+    char* cache_buf = NULL;
     size_t total = 0;
     ssize_t n;
     while ((n = Rio_readnb(&server_rio, buf, MAXLINE)) > 0) {
