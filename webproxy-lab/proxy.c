@@ -9,14 +9,26 @@ void read_header(rio_t* rio, char* request_header);
 void make_request(char* method, char* path, char* client_headers, char* request_headers);
 void proxyerror(int fd, HttpStatus errnum, const char* msg);
 
+void *thread(void *vargp) {
+    int connfd = *(int*)vargp;
+    free(vargp);
+    pthread_detach(pthread_self()); 
+    proxy(connfd);
+    Close(connfd);
+    return NULL;
+}
+
 int main(int argc, char** argv) {
     char* port = argv[1];
     int proxyfd = Open_listenfd(port);
+    
+    int *connfd;
+    pthread_t tid;
 
     while (1) {
-        int connfd = Accept(proxyfd, NULL, NULL);
-        proxy(connfd);
-        Close(connfd);
+        connfd = malloc(sizeof(int));
+        *connfd = Accept(proxyfd, NULL, NULL);
+        Pthread_create(&tid, NULL, thread, connfd);
     }
     return 0;
 }

@@ -1,21 +1,26 @@
 #include "proxy_cache.h"
 
+#include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
-int use_cache_size = 0;
+static int use_cache_size = 0;
+static pthread_mutex_t cache_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-cache_block *lru_head = NULL, *lru_tail = NULL;
-cache_block* hash_list[HASH_SIZE] = {0};
+static cache_block *lru_head = NULL, *lru_tail = NULL;
+static cache_block* hash_list[HASH_SIZE] = {0};
 
 cache_block* get_cache(const char* key) {
+    pthread_mutex_lock(&cache_mutex);
     cache_block* cur = NULL;
     iter_hash(key, NULL, &cur);
     if (cur) lru_move_to_front(cur);
+    pthread_mutex_unlock(&cache_mutex);
     return cur;
 }
 
 void insert_cache(const char* key, const char* value) {
+    pthread_mutex_lock(&cache_mutex);
     if (strlen(key) > MAX_URI_LEN || strlen(value) > MAX_OBJECT_SIZE) return;
     use_cache_size += strlen(value);
 
@@ -27,6 +32,7 @@ void insert_cache(const char* key, const char* value) {
     cache_block* cache = insert_hash(key, value);
 
     lru_insert_front(cache);
+    pthread_mutex_unlock(&cache_mutex);
 }
 
 void remove_cache(cache_block* cache) {
