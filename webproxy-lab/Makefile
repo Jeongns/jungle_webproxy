@@ -8,7 +8,7 @@ CC = gcc
 CFLAGS = -g -Wall
 LDFLAGS = -lpthread
 MAIN = proxy.o csapp.o
-UTILS = utils/uri_parser.o
+UTILS = utils/uri_parser.o utils/proxy_cache.o
 
 all: proxy
 
